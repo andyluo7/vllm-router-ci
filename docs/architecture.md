@@ -22,7 +22,8 @@ cross-node setup and cleanup.
 The coordinator service has two readiness gates:
 
 1. A systemd `ExecStartPre` waits for `network-online.target`, Docker, all GPUs,
-   all HCAs, SSH, model caches, and every jumbo-frame rail before the agent
+   the exact validated kernel and DKMS builds, loaded GPU/RDMA drivers, all
+   active HCAs, SSH, model caches, and every jumbo-frame rail before the agent
    connects.
 2. A global Buildkite `pre-command` hook repeats the same retrying check before
    every assigned job.

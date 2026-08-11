@@ -36,7 +36,7 @@ jobs:
       EXPECTED_SOURCE: ${{ inputs.expected_source || 'schedule' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check Buildkite nightly
         id: monitor

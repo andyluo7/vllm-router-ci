@@ -69,6 +69,18 @@ write_steps_without_rdma() {
   }]' >"${FIXTURE_DIR}/steps-${number}.json"
 }
 
+write_pr() {
+  local number=$1
+  local merged_at=$2
+  if [[ "${merged_at}" == null ]]; then
+    jq -n --argjson number "${number}" '{number: $number, merged_at: null}' \
+      >"${FIXTURE_DIR}/pr-${number}.json"
+  else
+    jq -n --argjson number "${number}" --arg merged_at "${merged_at}" \
+      '{number: $number, merged_at: $merged_at}' >"${FIXTURE_DIR}/pr-${number}.json"
+  fi
+}
+
 assert_contains() {
   local output_file=$1
   local expected=$2
@@ -111,6 +123,12 @@ assert_contains "${OUTPUT_DIR}/explicit_ui.out" "Explicit-build validation check
 run_failure source_mismatch BUILD_NUMBER=101 EXPECTED_SOURCE=schedule
 assert_contains "${OUTPUT_DIR}/source_mismatch.out" 'No matching `schedule` build was found'
 
+write_pr 11 null
+run_success waiting_for_pr \
+  REQUIRED_UPSTREAM_PRS=11 CANDIDATE_BUILD_NUMBERS=201 EXPECTED_SOURCE=schedule \
+  CURRENT_EPOCH="${fixture_now}"
+assert_contains "${OUTPUT_DIR}/waiting_for_pr.out" "prerequisite #11 must merge"
+
 write_build 200 passed schedule 2026-01-01T00:30:00.000Z
 write_steps 200 passed passed 0
 write_build 201 passed schedule 2026-01-01T01:00:00.000Z
@@ -118,6 +136,26 @@ write_steps 201 passed passed 0
 run_success clean_streak \
   CANDIDATE_BUILD_NUMBERS="201 200" EXPECTED_SOURCE=schedule CURRENT_EPOCH="${fixture_now}"
 assert_contains "${OUTPUT_DIR}/clean_streak.out" "Burn-in progress:** 2/7"
+
+write_pr 11 2026-01-01T00:45:00Z
+run_success post_merge_cutoff \
+  REQUIRED_UPSTREAM_PRS=11 CANDIDATE_BUILD_NUMBERS="201 200" EXPECTED_SOURCE=schedule \
+  CURRENT_EPOCH="${fixture_now}"
+assert_contains "${OUTPUT_DIR}/post_merge_cutoff.out" "Burn-in progress:** 1/7"
+
+write_pr 12 2026-01-01T01:45:00Z
+run_success waiting_first_eligible \
+  REQUIRED_UPSTREAM_PRS=12 CANDIDATE_BUILD_NUMBERS=201 EXPECTED_SOURCE=schedule \
+  CURRENT_EPOCH="${fixture_now}"
+assert_contains "${OUTPUT_DIR}/waiting_first_eligible.out" "first eligible nightly has not completed yet"
+
+write_pr 13 2025-12-30T00:00:00Z
+write_build 199 passed schedule 2025-12-29T23:00:00.000Z
+write_steps 199 passed passed 0
+run_failure missing_after_grace \
+  REQUIRED_UPSTREAM_PRS=13 CANDIDATE_BUILD_NUMBERS=199 EXPECTED_SOURCE=schedule \
+  CURRENT_EPOCH="${fixture_now}"
+assert_contains "${OUTPUT_DIR}/missing_after_grace.out" 'No matching `schedule` build was found'
 
 write_build 298 passed schedule 2026-01-01T00:15:00.000Z
 write_steps 298 passed passed 0

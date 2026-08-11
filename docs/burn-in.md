@@ -7,6 +7,8 @@ schedule to finish.
 
 The monitor accepts a nightly only when all of these conditions hold:
 
+- upstream Router PRs `#204` and `#205` have merged, and the build started
+  after the later merge;
 - the Buildkite source is `schedule`, not a manual UI/API invocation;
 - the configured nightly build message matches exactly;
 - the overall build passed;
@@ -22,6 +24,11 @@ notifications. The issue is assigned to the repository owner to provide an
 explicit notification subscription. The report shows the current consecutive
 clean-run count. Seven clean scheduled runs are required before burn-in is
 complete.
+
+Before both prerequisite PRs merge, the workflow records a waiting result and
+does not increment the streak. After they merge, builds created before the
+later merge are excluded. A 30-hour grace period allows the first eligible
+02:00 nightly to occur; after that, absence of an eligible run is an alert.
 
 ## Manual monitor validation
 

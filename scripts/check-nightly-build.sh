@@ -12,6 +12,9 @@ BUILD_NUMBER=${BUILD_NUMBER:-}
 CANDIDATE_BUILD_NUMBERS=${CANDIDATE_BUILD_NUMBERS:-}
 BUILDKITE_FIXTURE_DIR=${BUILDKITE_FIXTURE_DIR:-}
 CURRENT_EPOCH=${CURRENT_EPOCH:-}
+REQUIRED_UPSTREAM_PRS=${REQUIRED_UPSTREAM_PRS:-}
+UPSTREAM_PULLS_API_URL=${UPSTREAM_PULLS_API_URL:-https://api.github.com/repos/vllm-project/router/pulls}
+PREREQUISITE_GRACE_HOURS=${PREREQUISITE_GRACE_HOURS:-30}
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -23,7 +26,11 @@ require_command() {
 require_command curl
 require_command jq
 
-for numeric_setting in MAX_SEARCH_PAGES LATEST_MAX_AGE_HOURS BURN_IN_TARGET; do
+for numeric_setting in \
+  MAX_SEARCH_PAGES \
+  LATEST_MAX_AGE_HOURS \
+  BURN_IN_TARGET \
+  PREREQUISITE_GRACE_HOURS; do
   numeric_value=${!numeric_setting}
   if [[ ! "${numeric_value}" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: ${numeric_setting} must be a positive integer" >&2
@@ -75,6 +82,18 @@ fetch_steps_json() {
   fi
 }
 
+fetch_pr_json() {
+  local pr_number=$1
+  local destination=$2
+  if [[ -n "${BUILDKITE_FIXTURE_DIR}" ]]; then
+    cp "${BUILDKITE_FIXTURE_DIR}/pr-${pr_number}.json" "${destination}"
+  else
+    curl --fail --silent --show-error --location \
+      --header "Accept: application/vnd.github+json" \
+      "${UPSTREAM_PULLS_API_URL}/${pr_number}" >"${destination}"
+  fi
+}
+
 checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 echo "## ROCm nightly burn-in"
@@ -85,6 +104,9 @@ echo "- Required source: \`${EXPECTED_SOURCE}\`"
 echo "- Required lanes: XGMI 2/2 and RDMA 2/2, passed with zero retries"
 if [[ -z "${BUILD_NUMBER}" ]]; then
   echo "- Scheduled burn-in also requires zero retries across every command step"
+fi
+if [[ -n "${REQUIRED_UPSTREAM_PRS}" ]]; then
+  echo "- Required upstream PRs: \`${REQUIRED_UPSTREAM_PRS}\`"
 fi
 echo
 
@@ -97,7 +119,55 @@ if [[ -n "${BUILD_NUMBER}" ]]; then
   explicit_build=true
 elif [[ -n "${CANDIDATE_BUILD_NUMBERS}" ]]; then
   read -r -a candidate_builds <<<"${CANDIDATE_BUILD_NUMBERS}"
-else
+fi
+
+prerequisite_cutoff_epoch=0
+prerequisite_cutoff_at=
+if [[ "${explicit_build}" == false ]] && [[ -n "${REQUIRED_UPSTREAM_PRS}" ]]; then
+  read -r -a required_prs <<<"${REQUIRED_UPSTREAM_PRS}"
+  waiting_prs=()
+  for pr_number in "${required_prs[@]}"; do
+    if [[ ! "${pr_number}" =~ ^[0-9]+$ ]]; then
+      echo "ERROR: required upstream PR numbers must be numeric" >&2
+      exit 2
+    fi
+
+    pr_file="${tmp_dir}/pr-${pr_number}.json"
+    fetch_pr_json "${pr_number}" "${pr_file}"
+    merged_at=$(jq -r '.merged_at // empty' "${pr_file}")
+    if [[ -z "${merged_at}" ]]; then
+      waiting_prs+=("#${pr_number}")
+      continue
+    fi
+
+    merged_epoch=$(jq -nr --arg value "${merged_at}" '$value | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601')
+    if ((merged_epoch > prerequisite_cutoff_epoch)); then
+      prerequisite_cutoff_epoch=${merged_epoch}
+      prerequisite_cutoff_at=${merged_at}
+    fi
+  done
+
+  if ((${#waiting_prs[@]} > 0)); then
+    waiting_list=
+    for waiting_pr in "${waiting_prs[@]}"; do
+      if [[ -n "${waiting_list}" ]]; then
+        waiting_list="${waiting_list}, "
+      fi
+      waiting_list="${waiting_list}${waiting_pr}"
+    done
+    prerequisite_label=prerequisite
+    if ((${#waiting_prs[@]} > 1)); then
+      prerequisite_label=prerequisites
+    fi
+    echo "**Waiting:** ${prerequisite_label} ${waiting_list} must merge before the seven-night burn-in starts."
+    exit 0
+  fi
+
+  echo "- Burn-in eligibility begins after: \`${prerequisite_cutoff_at}\`"
+  echo
+fi
+
+if [[ "${explicit_build}" == false ]] && ((${#candidate_builds[@]} == 0)); then
   for ((page = 1; page <= MAX_SEARCH_PAGES; page++)); do
     page_file="${tmp_dir}/builds-page-${page}.html"
     curl --fail --silent --show-error --location --get \
@@ -116,7 +186,6 @@ else
     fi
     candidate_builds+=("${page_builds[@]}")
   done
-
 fi
 
 for candidate_build in "${candidate_builds[@]}"; do
@@ -138,8 +207,11 @@ for build_number in "${candidate_builds[@]}"; do
   build_file="${tmp_dir}/build-${build_number}.json"
   fetch_build_json "${build_number}" "${build_file}"
 
+  build_created_at=$(jq -r '.created_at' "${build_file}")
+  build_created_epoch=$(jq -nr --arg value "${build_created_at}" '$value | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601')
   if [[ $(jq -r '.source' "${build_file}") == "${EXPECTED_SOURCE}" ]] && \
-    [[ $(jq -r '.message' "${build_file}") == "${BUILD_MESSAGE}" ]]; then
+    [[ $(jq -r '.message' "${build_file}") == "${BUILD_MESSAGE}" ]] && \
+    ((build_created_epoch > prerequisite_cutoff_epoch)); then
     matching_builds+=("${build_number}")
     if [[ "${explicit_build}" == false ]] && ((${#matching_builds[@]} >= BURN_IN_TARGET)); then
       break
@@ -148,6 +220,15 @@ for build_number in "${candidate_builds[@]}"; do
 done
 
 if ((${#matching_builds[@]} == 0)); then
+  if ((prerequisite_cutoff_epoch > 0)); then
+    now_epoch=${CURRENT_EPOCH:-$(date -u +%s)}
+    prerequisite_age_seconds=$((now_epoch - prerequisite_cutoff_epoch))
+    prerequisite_grace_seconds=$((PREREQUISITE_GRACE_HOURS * 60 * 60))
+    if ((prerequisite_age_seconds >= 0 && prerequisite_age_seconds <= prerequisite_grace_seconds)); then
+      echo "**Waiting:** no scheduled build has started after the prerequisite merge cutoff; the first eligible nightly has not completed yet."
+      exit 0
+    fi
+  fi
   echo "**ALERT:** No matching \`${EXPECTED_SOURCE}\` build was found for the configured nightly message."
   exit 1
 fi

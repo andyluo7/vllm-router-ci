@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# Revalidate the dedicated coordinator/worker pair before every assigned job.
+# The systemd gate covers coordinator boot; this hook also catches a worker or
+# fabric failure that happens while the coordinator agent remains connected.
+exec /usr/local/sbin/vllm-router-rocm-wait-ready

@@ -1,0 +1,59 @@
+network:
+  version: 2
+  ethernets:
+    eth2:
+      match:
+        macaddress: "5e:25:73:c0:b6:58"
+      set-name: eth2
+      addresses: ["192.168.200.2/30"]
+      mtu: 9000
+      optional: true
+    eth3:
+      match:
+        macaddress: "5e:25:73:c3:78:ae"
+      set-name: eth3
+      addresses: ["192.168.200.6/30"]
+      mtu: 9000
+      optional: true
+    eth4:
+      match:
+        macaddress: "5e:25:73:c3:78:1e"
+      set-name: eth4
+      addresses: ["192.168.200.10/30"]
+      mtu: 9000
+      optional: true
+    eth5:
+      match:
+        macaddress: "5e:25:73:c0:b5:28"
+      set-name: eth5
+      addresses: ["192.168.200.14/30"]
+      mtu: 9000
+      optional: true
+    eth6:
+      match:
+        macaddress: "5e:25:73:c0:ac:a8"
+      set-name: eth6
+      addresses: ["192.168.200.18/30"]
+      mtu: 9000
+      optional: true
+    eth7:
+      match:
+        macaddress: "5e:25:73:c0:b5:c8"
+      set-name: eth7
+      addresses: ["192.168.200.22/30"]
+      mtu: 9000
+      optional: true
+    eth8:
+      match:
+        macaddress: "5e:25:73:b3:00:90"
+      set-name: eth8
+      addresses: ["192.168.200.26/30"]
+      mtu: 9000
+      optional: true
+    eth9:
+      match:
+        macaddress: "5e:25:73:b3:00:b0"
+      set-name: eth9
+      addresses: ["192.168.200.30/30"]
+      mtu: 9000
+      optional: true

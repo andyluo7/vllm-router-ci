@@ -1,0 +1,18 @@
+Host vllm-router-rocm-worker
+    HostName 192.168.200.2
+    User buildkite-agent
+    IdentityFile /var/lib/buildkite-agent/.ssh/vllm_router_ci_ed25519
+    IdentitiesOnly yes
+    BatchMode yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    GSSAPIAuthentication no
+    StrictHostKeyChecking yes
+    UserKnownHostsFile /var/lib/buildkite-agent/.ssh/known_hosts
+    ClearAllForwardings yes
+    ForwardAgent no
+    ForwardX11 no
+    RequestTTY no
+    ConnectTimeout 10
+    ServerAliveInterval 15
+    ServerAliveCountMax 4

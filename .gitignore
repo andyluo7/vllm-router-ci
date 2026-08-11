@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.env.*
+*.log
+*.pem
+*.key
+*agent-token*
+known_hosts
+artifacts/
+builds/
+target/

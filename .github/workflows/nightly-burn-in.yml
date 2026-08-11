@@ -68,9 +68,14 @@ jobs:
             issue_url=$(gh issue create \
               --repo "${GITHUB_REPOSITORY}" \
               --title "${issue_title}" \
+              --assignee "${GITHUB_REPOSITORY_OWNER}" \
               --body "Automated evidence for seven consecutive clean scheduled vLLM Router ROCm XGMI/RDMA runs.")
             issue_number=${issue_url##*/}
           fi
+
+          gh issue edit "${issue_number}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --add-assignee "${GITHUB_REPOSITORY_OWNER}" >/dev/null
 
           gh issue comment "${issue_number}" \
             --repo "${GITHUB_REPOSITORY}" \

@@ -18,8 +18,10 @@ The monitor accepts a nightly only when all of these conditions hold:
 Every check is posted to the private GitHub issue titled
 `ROCm CI seven-night burn-in`. A missing, stale, failed, incomplete, or retried
 nightly fails the workflow, which activates normal GitHub Actions failure
-notifications. The report shows the current consecutive clean-run count. Seven
-clean scheduled runs are required before burn-in is complete.
+notifications. The issue is assigned to the repository owner to provide an
+explicit notification subscription. The report shows the current consecutive
+clean-run count. Seven clean scheduled runs are required before burn-in is
+complete.
 
 ## Manual monitor validation
 

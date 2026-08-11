@@ -40,6 +40,7 @@ accuracy against the required `0.4100` threshold.
 - `kernel/`: persistent kernel selection and verification helpers
 - `docs/operations.md`: installation, reboot, and maintenance runbook
 - `docs/schedule.md`: Buildkite schedule and manual-run environment
+- `docs/burn-in.md`: nightly alerting and seven-run acceptance criteria
 - `docs/validation.md`: validated CI jobs and known unrelated test flake
 - `docs/upstream.md`: upstream issue and pull-request map
 

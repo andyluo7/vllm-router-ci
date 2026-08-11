@@ -36,3 +36,7 @@ RUN_ROCM_RDMA=1
 
 A clean checkout is not normally required. Select it only when diagnosing a
 suspected stale checkout or cache problem.
+
+The private `ROCm nightly burn-in monitor` GitHub Actions workflow checks the
+result daily and records it in a private tracking issue. See
+[Nightly monitoring and burn-in](burn-in.md).

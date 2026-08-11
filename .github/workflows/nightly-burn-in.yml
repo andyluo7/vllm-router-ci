@@ -1,0 +1,82 @@
+name: ROCm nightly burn-in monitor
+
+on:
+  schedule:
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: Optional Buildkite build number for monitor validation
+        required: false
+        type: string
+      expected_source:
+        description: Expected Buildkite source for an explicit build
+        required: false
+        default: schedule
+        type: choice
+        options:
+          - schedule
+          - ui
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: rocm-nightly-burn-in-monitor
+  cancel-in-progress: false
+
+jobs:
+  verify-nightly:
+    name: Verify Buildkite ROCm nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BUILD_NUMBER: ${{ inputs.build_number || '' }}
+      EXPECTED_SOURCE: ${{ inputs.expected_source || 'schedule' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Buildkite nightly
+        id: monitor
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          ./scripts/check-nightly-build.sh >nightly-report.md
+          exit_code=$?
+          echo "exit_code=${exit_code}" >>"${GITHUB_OUTPUT}"
+          cat nightly-report.md >>"${GITHUB_STEP_SUMMARY}"
+          exit "${exit_code}"
+
+      - name: Record result in burn-in issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          issue_title="ROCm CI seven-night burn-in"
+          issue_number=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state all \
+            --limit 100 \
+            --json number,title \
+            --jq ".[] | select(.title == \"${issue_title}\") | .number" \
+            | head -1)
+
+          if [[ -z "${issue_number}" ]]; then
+            issue_url=$(gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${issue_title}" \
+              --body "Automated evidence for seven consecutive clean scheduled vLLM Router ROCm XGMI/RDMA runs.")
+            issue_number=${issue_url##*/}
+          fi
+
+          gh issue comment "${issue_number}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body-file nightly-report.md
+
+      - name: Fail on missing or unhealthy nightly
+        if: steps.monitor.outputs.exit_code != '0'
+        shell: bash
+        run: exit 1

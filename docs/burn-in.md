@@ -39,3 +39,8 @@ BUILD_NUMBER=642 EXPECTED_SOURCE=ui ./scripts/check-nightly-build.sh
 
 The monitor deliberately uses Buildkite's public build JSON and step-data
 endpoints. It does not require or store a Buildkite API token.
+
+`tests/test-nightly-monitor.sh` exercises the clean-streak calculation and the
+source-mismatch, retry, failed-matrix, missing-matrix, and stale-build alert
+paths with deterministic fixtures. The private repository runs these tests on
+every pull request and every push to `main`.

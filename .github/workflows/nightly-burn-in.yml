@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          ./scripts/check-nightly-build.sh >nightly-report.md
+          ./scripts/check-nightly-build.sh >nightly-report.md 2>&1
           exit_code=$?
           echo "exit_code=${exit_code}" >>"${GITHUB_OUTPUT}"
           cat nightly-report.md >>"${GITHUB_STEP_SUMMARY}"

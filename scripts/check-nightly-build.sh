@@ -9,6 +9,9 @@ MAX_SEARCH_PAGES=${MAX_SEARCH_PAGES:-10}
 LATEST_MAX_AGE_HOURS=${LATEST_MAX_AGE_HOURS:-20}
 BURN_IN_TARGET=${BURN_IN_TARGET:-7}
 BUILD_NUMBER=${BUILD_NUMBER:-}
+CANDIDATE_BUILD_NUMBERS=${CANDIDATE_BUILD_NUMBERS:-}
+BUILDKITE_FIXTURE_DIR=${BUILDKITE_FIXTURE_DIR:-}
+CURRENT_EPOCH=${CURRENT_EPOCH:-}
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -20,11 +23,70 @@ require_command() {
 require_command curl
 require_command jq
 
+for numeric_setting in MAX_SEARCH_PAGES LATEST_MAX_AGE_HOURS BURN_IN_TARGET; do
+  numeric_value=${!numeric_setting}
+  if [[ ! "${numeric_value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: ${numeric_setting} must be a positive integer" >&2
+    exit 2
+  fi
+done
+
+if [[ -n "${CURRENT_EPOCH}" ]] && [[ ! "${CURRENT_EPOCH}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: CURRENT_EPOCH must be an integer Unix timestamp" >&2
+  exit 2
+fi
+
+if [[ -n "${BUILD_NUMBER}" ]] && [[ -n "${CANDIDATE_BUILD_NUMBERS}" ]]; then
+  echo "ERROR: BUILD_NUMBER and CANDIDATE_BUILD_NUMBERS are mutually exclusive" >&2
+  exit 2
+fi
+
+if [[ -n "${BUILDKITE_FIXTURE_DIR}" ]] && [[ ! -d "${BUILDKITE_FIXTURE_DIR}" ]]; then
+  echo "ERROR: BUILDKITE_FIXTURE_DIR is not a directory" >&2
+  exit 2
+fi
+
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 declare -a candidate_builds=()
 declare -a matching_builds=()
+explicit_build=false
+
+fetch_build_json() {
+  local build_number=$1
+  local destination=$2
+  if [[ -n "${BUILDKITE_FIXTURE_DIR}" ]]; then
+    cp "${BUILDKITE_FIXTURE_DIR}/build-${build_number}.json" "${destination}"
+  else
+    curl --fail --silent --show-error --location \
+      "${BUILDKITE_PIPELINE_URL}/builds/${build_number}.json" >"${destination}"
+  fi
+}
+
+fetch_steps_json() {
+  local build_number=$1
+  local destination=$2
+  if [[ -n "${BUILDKITE_FIXTURE_DIR}" ]]; then
+    cp "${BUILDKITE_FIXTURE_DIR}/steps-${build_number}.json" "${destination}"
+  else
+    curl --fail --silent --show-error --location \
+      "${BUILDKITE_PIPELINE_URL}/builds/${build_number}/data/steps" >"${destination}"
+  fi
+}
+
+checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+echo "## ROCm nightly burn-in"
+echo
+echo "- Checked: \`${checked_at}\`"
+echo "- Pipeline: ${BUILDKITE_PIPELINE_URL}"
+echo "- Required source: \`${EXPECTED_SOURCE}\`"
+echo "- Required lanes: XGMI 2/2 and RDMA 2/2, passed with zero retries"
+if [[ -z "${BUILD_NUMBER}" ]]; then
+  echo "- Scheduled burn-in also requires zero retries across every command step"
+fi
+echo
 
 if [[ -n "${BUILD_NUMBER}" ]]; then
   if [[ ! "${BUILD_NUMBER}" =~ ^[0-9]+$ ]]; then
@@ -32,6 +94,9 @@ if [[ -n "${BUILD_NUMBER}" ]]; then
     exit 2
   fi
   candidate_builds=("${BUILD_NUMBER}")
+  explicit_build=true
+elif [[ -n "${CANDIDATE_BUILD_NUMBERS}" ]]; then
+  read -r -a candidate_builds <<<"${CANDIDATE_BUILD_NUMBERS}"
 else
   for ((page = 1; page <= MAX_SEARCH_PAGES; page++)); do
     page_file="${tmp_dir}/builds-page-${page}.html"
@@ -52,6 +117,16 @@ else
     candidate_builds+=("${page_builds[@]}")
   done
 
+fi
+
+for candidate_build in "${candidate_builds[@]}"; do
+  if [[ ! "${candidate_build}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: candidate build numbers must be numeric" >&2
+    exit 2
+  fi
+done
+
+if [[ "${explicit_build}" == false ]] && ((${#candidate_builds[@]} > 0)); then
   unique_candidates=()
   while IFS= read -r candidate_build; do
     unique_candidates+=("${candidate_build}")
@@ -61,30 +136,16 @@ fi
 
 for build_number in "${candidate_builds[@]}"; do
   build_file="${tmp_dir}/build-${build_number}.json"
-  curl --fail --silent --show-error --location \
-    "${BUILDKITE_PIPELINE_URL}/builds/${build_number}.json" >"${build_file}"
+  fetch_build_json "${build_number}" "${build_file}"
 
   if [[ $(jq -r '.source' "${build_file}") == "${EXPECTED_SOURCE}" ]] && \
     [[ $(jq -r '.message' "${build_file}") == "${BUILD_MESSAGE}" ]]; then
     matching_builds+=("${build_number}")
-    if [[ -z "${BUILD_NUMBER}" ]] && ((${#matching_builds[@]} >= BURN_IN_TARGET)); then
+    if [[ "${explicit_build}" == false ]] && ((${#matching_builds[@]} >= BURN_IN_TARGET)); then
       break
     fi
   fi
 done
-
-checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-echo "## ROCm nightly burn-in"
-echo
-echo "- Checked: \`${checked_at}\`"
-echo "- Pipeline: ${BUILDKITE_PIPELINE_URL}"
-echo "- Required source: \`${EXPECTED_SOURCE}\`"
-echo "- Required lanes: XGMI 2/2 and RDMA 2/2, passed with zero retries"
-if [[ -z "${BUILD_NUMBER}" ]]; then
-  echo "- Scheduled burn-in also requires zero retries across every command step"
-fi
-echo
 
 if ((${#matching_builds[@]} == 0)); then
   echo "**ALERT:** No matching \`${EXPECTED_SOURCE}\` build was found for the configured nightly message."
@@ -102,8 +163,7 @@ latest_created_at=
 for build_number in "${matching_builds[@]}"; do
   build_file="${tmp_dir}/build-${build_number}.json"
   steps_file="${tmp_dir}/steps-${build_number}.json"
-  curl --fail --silent --show-error --location \
-    "${BUILDKITE_PIPELINE_URL}/builds/${build_number}/data/steps" >"${steps_file}"
+  fetch_steps_json "${build_number}" "${steps_file}"
 
   overall=$(jq -r '.state' "${build_file}")
   created_at=$(jq -r '.created_at' "${build_file}")
@@ -131,7 +191,7 @@ for build_number in "${matching_builds[@]}"; do
   if [[ "${overall}" == passed ]] && \
     [[ "${xgmi}" == "passed 2/2 retries=0" ]] && \
     [[ "${rdma}" == "passed 2/2 retries=0" ]] && \
-    { [[ -n "${BUILD_NUMBER}" ]] || [[ "${all_retries}" == 0 ]]; }; then
+    { [[ "${explicit_build}" == true ]] || [[ "${all_retries}" == 0 ]]; }; then
     clean=true
   fi
 
@@ -161,7 +221,7 @@ if ((consecutive_clean > BURN_IN_TARGET)); then
 fi
 
 echo
-if [[ -n "${BUILD_NUMBER}" ]]; then
+if [[ "${explicit_build}" == true ]]; then
   echo "Explicit-build validation checks the ROCm lanes, ignores retries in unrelated steps, and does not change the scheduled burn-in count."
 elif ((consecutive_clean >= BURN_IN_TARGET)); then
   echo "**Burn-in complete:** ${BURN_IN_TARGET}/${BURN_IN_TARGET} consecutive scheduled runs are clean."
@@ -169,9 +229,9 @@ else
   echo "**Burn-in progress:** ${consecutive_clean}/${BURN_IN_TARGET} consecutive scheduled runs are clean."
 fi
 
-if [[ -z "${BUILD_NUMBER}" ]]; then
+if [[ "${explicit_build}" == false ]]; then
   created_epoch=$(jq -nr --arg value "${latest_created_at}" '$value | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601')
-  now_epoch=$(date -u +%s)
+  now_epoch=${CURRENT_EPOCH:-$(date -u +%s)}
   age_seconds=$((now_epoch - created_epoch))
   max_age_seconds=$((LATEST_MAX_AGE_HOURS * 60 * 60))
   if ((age_seconds < 0 || age_seconds > max_age_seconds)); then

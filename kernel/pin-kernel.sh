@@ -38,7 +38,23 @@ trap cleanup EXIT
 
 printf 'GRUB_DEFAULT="%s>%s"\n' "${submenu_id}" "${entry_id}" >"${tmp_file}"
 install -o root -g root -m 0644 "${tmp_file}" "${OVERRIDE_PATH}"
+
+kernel_release=${TARGET_KERNEL%-generic}
+for package in \
+  "linux-image-${TARGET_KERNEL}" \
+  "linux-modules-${TARGET_KERNEL}" \
+  "linux-modules-extra-${TARGET_KERNEL}" \
+  "linux-headers-${kernel_release}" \
+  "linux-headers-${TARGET_KERNEL}" \
+  "linux-tools-${kernel_release}" \
+  "linux-tools-${TARGET_KERNEL}"; do
+  if [[ $(dpkg-query -W -f='${db:Status-Abbrev}' "${package}" 2>/dev/null || true) == "ii " ]]; then
+    apt-mark manual "${package}" >/dev/null
+  fi
+done
+
 update-grub
 
 echo "Pinned the persistent GRUB default to ${TARGET_KERNEL}"
+echo "Marked the installed ${TARGET_KERNEL} image, modules, headers, and tools as manually installed"
 echo "Reboot, then run kernel/verify-kernel.sh ${TARGET_KERNEL}"

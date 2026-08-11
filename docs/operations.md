@@ -77,6 +77,11 @@ The `6.8.0-137-generic` update caused an amdgpu/PeerDirect regression on this
 cluster. Both hosts therefore boot the exact validated
 `6.8.0-134-generic` GRUB entry.
 
+`kernel/pin-kernel.sh` also marks every installed image, modules, headers, and
+tools package for the selected kernel as manually installed. This prevents
+APT autoremove from deleting the rollback target while allowing unrelated
+security updates to continue.
+
 Do not move the production pair to a new kernel merely because a DKMS update
 completed. Validate the candidate kernel on a drained host, including amdgpu,
 PeerDirect, all HCAs, GPU-memory RDMA, XGMI, and both live MoRI RDMA modes. Keep

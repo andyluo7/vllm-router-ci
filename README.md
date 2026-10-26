@@ -35,8 +35,9 @@ accuracy against the required `0.4100` threshold.
 ## Repository layout
 
 - `buildkite/`: agent configuration, exact-digest image restoration,
-  Docker-plugin validation, boot-time readiness gate, and per-job pre-command
-  hook
+  Docker-plugin validation, shared-host lease, and per-job readiness hook
+- `github-actions/` and `shared/`: symmetric SMG runner hooks and the host-local
+  lease helpers used by both CI systems
 - `netplan/`: the eight persistent jumbo-frame RoCE rails per host
 - `kernel/`: persistent kernel selection and verification helpers
 - `docs/operations.md`: installation, reboot, and maintenance runbook

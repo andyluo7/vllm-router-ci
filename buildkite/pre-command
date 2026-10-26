@@ -2,7 +2,11 @@
 
 set -Eeuo pipefail
 
-# Revalidate the dedicated coordinator/worker pair before every assigned job.
-# The systemd gate covers coordinator boot; this hook also catches a worker or
-# fabric failure that happens while the coordinator agent remains connected.
+# Claim both shared hosts before inspecting or using them. The detached lease
+# holder follows the Buildkite bootstrap, so cancellation and crashes release
+# both host locks without relying on a post-command hook.
+/usr/local/sbin/vllm-router-rocm-acquire-cluster-lease
+
+# Revalidate the coordinator/worker pair before every assigned job. Keeping
+# this at job scope lets the agent remain connected while SMG owns either host.
 exec /usr/local/sbin/vllm-router-rocm-wait-ready

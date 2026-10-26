@@ -21,6 +21,12 @@ ROCM_ONLY=1
 RUN_ROCM_RDMA=1
 ```
 
+The hosts also serve SMG's AMD GitHub Actions lanes. In particular, SMG's
+daily PD topology workflow starts at `09:45 UTC`, 45 minutes after this Router
+schedule starts during daylight time, and weekly BFCL AMD legs can run for
+hours. Clock separation is therefore not a sufficient ownership mechanism;
+the host-level lease described in [Operations](operations.md) is required.
+
 `ROCM_ONLY=1` skips the generic NVIDIA P/D lane. A real scheduled invocation
 selects RDMA through `NIGHTLY=1`. `RUN_ROCM_RDMA=1` is also retained because
 Buildkite's schedule **Run now** action creates a UI-source build; UI/API builds

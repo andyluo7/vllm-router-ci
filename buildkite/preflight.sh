@@ -28,6 +28,23 @@ rdma_count() {
   ibv_devices 2>/dev/null | awk '$1 ~ /^mlx5_[0-7]$/ { count++ } END { print count + 0 }'
 }
 
+check_gpu_idle() {
+  local host=$1
+  local memory_csv=$2
+  local busy_gpus
+
+  busy_gpus=$(printf '%s\n' "${memory_csv}" | awk -F, '
+    $1 ~ /^card[0-7]$/ {
+      gsub(/[[:space:]]/, "", $2)
+      if (($2 + 0) > 5) {
+        printf "%s=%s%% ", $1, $2
+      }
+    }
+  ')
+  [[ -z ${busy_gpus} ]] \
+    || fail "${host} GPUs are not idle: ${busy_gpus}"
+}
+
 check_dkms_status() {
   local host=$1
   local status=$2
@@ -81,6 +98,7 @@ check_dkms_status coordinator "$(dkms status 2>/dev/null)"
 check_loaded_modules coordinator "$(cat /proc/modules)"
 
 [[ $(gpu_count) -eq 8 ]] || fail "coordinator does not expose eight GPUs"
+check_gpu_idle coordinator "$(rocm-smi --showmemuse --csv 2>/dev/null)"
 [[ $(rdma_count) -eq 8 ]] || fail "coordinator does not expose eight mlx5 HCAs"
 docker info >/dev/null
 docker image inspect "${ROCM_VLLM_IMAGE}" >/dev/null
@@ -105,6 +123,7 @@ check_loaded_modules worker "$(ssh "${WORKER_SSH_HOST}" cat /proc/modules)"
 
 [[ $(ssh "${WORKER_SSH_HOST}" rocm-smi -l 2>/dev/null | grep -c '^GPU\[') -eq 8 ]] \
   || fail "worker does not expose eight GPUs"
+check_gpu_idle worker "$(ssh "${WORKER_SSH_HOST}" rocm-smi --showmemuse --csv 2>/dev/null)"
 [[ $(ssh "${WORKER_SSH_HOST}" ibv_devices 2>/dev/null | awk '$1 ~ /^mlx5_[0-7]$/ { count++ } END { print count + 0 }') -eq 8 ]] \
   || fail "worker does not expose eight mlx5 HCAs"
 ssh "${WORKER_SSH_HOST}" docker info >/dev/null
@@ -155,4 +174,4 @@ for rail in {0..7}; do
     || fail "jumbo-frame fabric check failed for ${worker_ip}"
 done
 
-echo "MI300X coordinator/worker preflight passed: pinned kernel, DKMS, loaded drivers, 8 GPUs, 8 active HCAs, Docker image, model cache, SSH, and jumbo RoCE rails"
+echo "MI300X coordinator/worker preflight passed: pinned kernel, DKMS, loaded drivers, idle GPUs, 8 active HCAs, Docker image, model cache, SSH, and jumbo RoCE rails"

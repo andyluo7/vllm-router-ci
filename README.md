@@ -34,8 +34,9 @@ accuracy against the required `0.4100` threshold.
 
 ## Repository layout
 
-- `buildkite/`: agent configuration, Docker-plugin validation, boot-time
-  readiness gate, and per-job pre-command hook
+- `buildkite/`: agent configuration, exact-digest image restoration,
+  Docker-plugin validation, boot-time readiness gate, and per-job pre-command
+  hook
 - `netplan/`: the eight persistent jumbo-frame RoCE rails per host
 - `kernel/`: persistent kernel selection and verification helpers
 - `docs/operations.md`: installation, reboot, and maintenance runbook

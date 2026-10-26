@@ -11,7 +11,7 @@
    for the worker's `buildkite-agent` account, and populate strict
    `known_hosts`. Never commit either generated file.
 4. Populate the pinned ROCm Docker image and `Qwen/Qwen3-0.6B` model cache on
-   both hosts. The installed readiness gate restores the exact image digest on
+   both hosts. The per-job readiness gate restores the exact image digest on
    both nodes if it is later pruned; pulling only the moving `nightly` tag does
    not satisfy this requirement.
 5. Pin both hosts to the validated kernel with `kernel/pin-kernel.sh`, reboot,
@@ -19,10 +19,34 @@
 
 ## Coordinator readiness and activation
 
+These two MI300X hosts are also SMG GitHub Actions runners. Before enabling
+Router, stage the shared host lease on **both** machines:
+
+```bash
+sudo ./shared/stage-host-coordination.sh
+```
+
+The SMG job-start hook holds a host-local `flock` for the lifetime of its
+`Runner.Worker`. Router's global pre-command hook atomically claims the
+coordinator and worker locks for the lifetime of its Buildkite bootstrap. If
+either SMG runner is busy, Router waits without touching its containers; if
+Router owns the pair, a new SMG job waits before cleanup or GPU access.
+
+The staged SMG cleanup only removes containers mounted from that runner's own
+`_work` directory. It must never use an unfiltered `docker rm -f` because these
+are shared hosts.
+
 Stage and validate readiness without changing the agent service:
 
 ```bash
 sudo ./buildkite/stage-coordinator-readiness.sh
+```
+
+If SMG already owns either host, install the files without probing occupied
+GPUs, then run the normal command after that job finishes:
+
+```bash
+sudo ./buildkite/stage-coordinator-readiness.sh --defer-readiness
 ```
 
 Activate only after the queue exists and the agent-registration token is
@@ -48,15 +72,20 @@ On the coordinator:
 
 ```bash
 systemctl show buildkite-agent \
-  -p ActiveState -p SubState -p After -p Requires -p TimeoutStartUSec
+  -p ActiveState -p SubState -p After -p Requires
 journalctl -u buildkite-agent -n 100 --no-pager
 sudo -u buildkite-agent -H /usr/local/sbin/vllm-router-rocm-wait-ready
 ```
 
 `vllm-router-rocm-wait-ready` first runs the fixed-reference image restorer on
 the coordinator and worker, then validates kernels, drivers, GPU idleness,
-Docker, model caches, and all RoCE rails. Image pulls are serialized so a boot
-gate and a per-job hook cannot pull the same digest concurrently.
+Docker, model caches, and all RoCE rails. Image pulls are serialized so a
+manual probe and a per-job hook cannot pull the same digest concurrently.
+
+The per-job hook acquires the shared-host lease before this readiness check.
+The systemd service intentionally waits only for network and Docker: an idle
+agent may stay connected while SMG runs, and ownership begins only when
+Buildkite assigns a Router job.
 
 On the worker:
 
@@ -73,8 +102,9 @@ The expected worker results are `disabled` and `inactive`.
 2. Reboot the worker first.
 3. Verify its kernel, GPUs, HCAs, Docker, model cache, and rails.
 4. Reboot the coordinator.
-5. Confirm the coordinator boots the pinned kernel and that the readiness gate
-   brings the agent online only after the worker is ready.
+5. Confirm the coordinator boots the pinned kernel and the agent reconnects.
+   Its per-job gate must still wait until the worker lease and readiness checks
+   both pass.
 6. Trigger a trusted manual XGMI/RDMA build before returning the pair to normal
    service.
 

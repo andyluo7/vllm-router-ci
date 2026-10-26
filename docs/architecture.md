@@ -19,15 +19,18 @@ Only the coordinator accepts Buildkite work. This prevents two independent
 agents from allocating the paired cluster concurrently and lets one job own
 cross-node setup and cleanup.
 
-The coordinator service has two readiness gates:
+The coordinator service waits only for network and Docker before connecting.
+Hardware ownership and readiness are job-scoped because the two hosts are also
+SMG GitHub Actions runners:
 
-1. A systemd `ExecStartPre` waits for `network-online.target`, Docker, all GPUs,
-   the exact validated kernel and DKMS builds, loaded GPU/RDMA drivers, all
-   active HCAs, SSH, model caches, and every jumbo-frame rail before the agent
-   connects.
-2. A global Buildkite `pre-command` hook repeats the same retrying check before
-   every assigned job.
+1. SMG's job-start hook claims the local host lock before cleanup or GPU use and
+   retains it for the lifetime of that job's `Runner.Worker`.
+2. Router's global Buildkite `pre-command` hook atomically claims both host
+   locks for the lifetime of the Buildkite bootstrap.
+3. After ownership is established, Router restores the exact image digest and
+   validates the kernel and DKMS builds, loaded GPU/RDMA drivers, idle GPUs,
+   all active HCAs, SSH, model caches, and every jumbo-frame rail.
 
 The readiness loop allows 600 seconds total, limits each attempt to 60 seconds,
-and retries every 10 seconds. The Buildkite service startup timeout is 12
-minutes.
+and retries every 10 seconds. Lease acquisition can wait up to six hours for a
+long SMG job without letting either CI system touch the other's containers.

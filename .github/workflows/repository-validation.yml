@@ -23,3 +23,6 @@ jobs:
 
       - name: Test nightly monitor
         run: ./tests/test-nightly-monitor.sh
+
+      - name: Test shared AMD CI lease
+        run: ./tests/test-ci-lease.sh

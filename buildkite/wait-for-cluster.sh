@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 # Keep these values fixed rather than accepting job-controlled environment
-# overrides. This script runs both as a systemd ExecStartPre command and as a
-# global Buildkite hook on a dedicated agent.
+# overrides. This script runs after the global Buildkite hook has claimed both
+# shared hosts for the assigned job.
 readonly PREFLIGHT_PATH=/usr/local/sbin/vllm-router-rocm-preflight
 readonly IMAGE_ENSURE_PATH=/usr/local/sbin/vllm-router-rocm-ensure-image
 readonly READINESS_TIMEOUT_SECONDS=600

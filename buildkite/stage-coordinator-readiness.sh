@@ -9,12 +9,15 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT_SOURCE="${SCRIPT_DIR}/preflight.sh"
+IMAGE_ENSURE_SOURCE="${SCRIPT_DIR}/ensure-pinned-image.sh"
 READINESS_SOURCE="${SCRIPT_DIR}/wait-for-cluster.sh"
 PRE_COMMAND_HOOK_SOURCE="${SCRIPT_DIR}/pre-command"
 SYSTEMD_DROP_IN_SOURCE="${SCRIPT_DIR}/vllm-router-rocm-readiness.conf"
 SSH_CONFIG_SOURCE="${SCRIPT_DIR}/coordinator-ssh-config"
 
 PREFLIGHT_PATH=/usr/local/sbin/vllm-router-rocm-preflight
+IMAGE_ENSURE_PATH=/usr/local/sbin/vllm-router-rocm-ensure-image
+IMAGE_LOCK_PATH=/var/lib/buildkite-agent/.vllm-router-rocm-image.lock
 READINESS_PATH=/usr/local/sbin/vllm-router-rocm-wait-ready
 PRE_COMMAND_HOOK_PATH=/etc/buildkite-agent/hooks/pre-command
 SYSTEMD_DROP_IN_PATH=/etc/systemd/system/buildkite-agent.service.d/vllm-router-rocm-readiness.conf
@@ -22,6 +25,7 @@ SSH_CONFIG_PATH=/var/lib/buildkite-agent/.ssh/config
 
 for source_path in \
   "${PREFLIGHT_SOURCE}" \
+  "${IMAGE_ENSURE_SOURCE}" \
   "${READINESS_SOURCE}" \
   "${PRE_COMMAND_HOOK_SOURCE}" \
   "${SYSTEMD_DROP_IN_SOURCE}" \
@@ -42,6 +46,8 @@ install -d -o buildkite-agent -g buildkite-agent -m 0700 \
 install -d -o buildkite-agent -g buildkite-agent -m 0755 \
   /var/lib/buildkite-agent/builds \
   /var/lib/buildkite-agent/plugins
+install -o buildkite-agent -g buildkite-agent -m 0600 \
+  /dev/null "${IMAGE_LOCK_PATH}"
 install -d -o root -g root -m 0755 \
   /etc/buildkite-agent/hooks \
   /etc/systemd/system/buildkite-agent.service.d
@@ -50,6 +56,8 @@ install -o buildkite-agent -g buildkite-agent -m 0600 \
   "${SSH_CONFIG_SOURCE}" "${SSH_CONFIG_PATH}"
 install -o root -g root -m 0755 \
   "${PREFLIGHT_SOURCE}" "${PREFLIGHT_PATH}"
+install -o root -g root -m 0755 \
+  "${IMAGE_ENSURE_SOURCE}" "${IMAGE_ENSURE_PATH}"
 install -o root -g root -m 0755 \
   "${READINESS_SOURCE}" "${READINESS_PATH}"
 install -o root -g root -m 0755 \

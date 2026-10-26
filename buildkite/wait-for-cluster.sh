@@ -6,14 +6,24 @@ set -Eeuo pipefail
 # overrides. This script runs both as a systemd ExecStartPre command and as a
 # global Buildkite hook on a dedicated agent.
 readonly PREFLIGHT_PATH=/usr/local/sbin/vllm-router-rocm-preflight
+readonly IMAGE_ENSURE_PATH=/usr/local/sbin/vllm-router-rocm-ensure-image
 readonly READINESS_TIMEOUT_SECONDS=600
 readonly PREFLIGHT_ATTEMPT_TIMEOUT_SECONDS=60
 readonly RETRY_DELAY_SECONDS=10
 
+if [[ ! -x "${IMAGE_ENSURE_PATH}" ]]; then
+  echo "ERROR: pinned-image restorer is unavailable: ${IMAGE_ENSURE_PATH}" >&2
+  exit 2
+fi
 if [[ ! -x "${PREFLIGHT_PATH}" ]]; then
   echo "ERROR: cluster preflight is unavailable: ${PREFLIGHT_PATH}" >&2
   exit 2
 fi
+
+# A missing digest cannot become ready through repeated image inspection. Pull
+# the fixed reference on both hosts once, before entering the hardware retry
+# loop. The helper serializes concurrent boot/per-job invocations.
+"${IMAGE_ENSURE_PATH}"
 
 deadline=$((SECONDS + READINESS_TIMEOUT_SECONDS))
 attempt=1

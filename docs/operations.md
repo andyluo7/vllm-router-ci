@@ -11,7 +11,9 @@
    for the worker's `buildkite-agent` account, and populate strict
    `known_hosts`. Never commit either generated file.
 4. Populate the pinned ROCm Docker image and `Qwen/Qwen3-0.6B` model cache on
-   both hosts.
+   both hosts. The installed readiness gate restores the exact image digest on
+   both nodes if it is later pruned; pulling only the moving `nightly` tag does
+   not satisfy this requirement.
 5. Pin both hosts to the validated kernel with `kernel/pin-kernel.sh`, reboot,
    and run `kernel/verify-kernel.sh`.
 
@@ -50,6 +52,11 @@ systemctl show buildkite-agent \
 journalctl -u buildkite-agent -n 100 --no-pager
 sudo -u buildkite-agent -H /usr/local/sbin/vllm-router-rocm-wait-ready
 ```
+
+`vllm-router-rocm-wait-ready` first runs the fixed-reference image restorer on
+the coordinator and worker, then validates kernels, drivers, GPU idleness,
+Docker, model caches, and all RoCE rails. Image pulls are serialized so a boot
+gate and a per-job hook cannot pull the same digest concurrently.
 
 On the worker:
 

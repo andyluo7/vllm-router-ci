@@ -2,8 +2,7 @@
 
 The private GitHub Actions workflow `ROCm nightly burn-in monitor` checks the
 public Buildkite pipeline every day at 12:30 UTC. That is 05:30 PDT or 04:30
-PST, leaving at least 2.5 hours for the 02:00 America/Los_Angeles Buildkite
-schedule to finish.
+PST, leaving 7.5 hours for the 05:00 UTC Buildkite schedule to finish.
 
 The monitor accepts a nightly only when all of these conditions hold:
 
@@ -28,7 +27,7 @@ complete.
 Before both prerequisite PRs merge, the workflow records a waiting result and
 does not increment the streak. After they merge, builds created before the
 later merge are excluded. A 30-hour grace period allows the first eligible
-02:00 nightly to occur; after that, absence of an eligible run is an alert.
+05:00 UTC nightly to occur; after that, absence of an eligible run is an alert.
 
 ## Manual monitor validation
 
